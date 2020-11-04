@@ -7,9 +7,12 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <sys/stat.h>
 
 #define BACKLOG 5
 #define BUFF_SIZE 1024
+#define STORAGE "./Storage/" //default save file place
+#define EXISTEDFILE "Error: File da ton tai "
 
 int check_valid_file(char* file_name);
 // seperate a string to 2 line: numbers and letters
@@ -31,16 +34,18 @@ int main(int argc, char const *argv[])
 	struct sockaddr_in cliaddr;
 	
 	char data[BUFF_SIZE];
+  FILE *fileptr;
+  long filelen;
 	
 	socklen_t sin_size;
 	
-	// Construct a TCP socket to listen connection request
+	// Step1: Construct a TCP socket to listen connection request
 	if ((listen_sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1 ){
 		perror("\nError: ");
 		return 0;
 	}
 	
-	// Bind address to socket
+	// Step2: Bind address to socket
 	memset(&servaddr, '\0', sizeof servaddr);
 	servaddr.sin_family = AF_INET;         
 	servaddr.sin_port = htons(atoi(argv[1]));
@@ -50,7 +55,7 @@ int main(int argc, char const *argv[])
 		return 0;
 	}     
 	
-	// Listen request from client
+	// Step3:  Listen request from client
 	if(listen(listen_sockfd, BACKLOG) == -1){
 		perror("\nError: ");
 		return 0;
@@ -58,6 +63,7 @@ int main(int argc, char const *argv[])
 	
 	printf("Server started!\n");
 
+  struct stat st = {0};
 	// Communicate with client
 	while(1) 
 	{
@@ -78,52 +84,90 @@ int main(int argc, char const *argv[])
 				printf("\nConnection closed");
 				break;
 			}
-      if (check_valid_file(data) == 1){
-			  FILE *f;
-        int words = 0;
-        char c;
-        // catch un-exist file
-        f = fopen(data, "r");
-        if (f == NULL) {
-            perror("Error in file open\n");
-          }
-          // count the line
-        char buffer2[100];
-        int count = 0;
-        for (c = getc(f); c != EOF; c = getc(f)){
-          if (c == '\n'){
-            count = count + 1;
-          }
-        }
-        fclose(f);
-        // send number of line in this file
-        write(conn_sockfd, &count, sizeof(int));
-        f = fopen(data, "r");
-        // send data of file
-        for(int i=0;i< count + 1;i++){
-          fscanf(f,"%[^\n]\n",buffer2);
-          write(conn_sockfd,buffer2,100);
-        }
-        fclose(f);
-        break;
+      if (stat(STORAGE, &st) == -1) { //create storage if it not exist
+        mkdir(STORAGE, 0755);
       }
+      if (check_valid_file(data) == 1){
+        char number[BUFF_SIZE];
+        char character[BUFF_SIZE];
+        data[recvBytes] = '\0';
+        // Path of file in Storage folder
+        char name[100];
+				strcpy(name, STORAGE); // save file in storage
+				strcat(name, data); // file name
+				printf("Ten file : %s\n", name);
+				if((fileptr = fopen(name, "rb")) != NULL) { // check if file exist
+					printf("%s\n", EXISTEDFILE);
+					sendBytes = send(conn_sockfd, EXISTEDFILE, strlen(EXISTEDFILE), 0);
+					if (sendBytes <= 0){
+						printf("\nConnection closed");
+						break;
+					}
+					fclose(fileptr);
+					continue;
+				}else{
+          // fclose(fileptr);
+					sendBytes = send(conn_sockfd, "OK", 20, 0); // if file Name valid
+					if (sendBytes <= 0){
+						printf("\nConnection closed");
+						break;
+					}
+					recvBytes = recv(conn_sockfd, &filelen, 20, 0);
+					if (recvBytes <= 0){
+						printf("\nConnection closed");
+						break;
+					}
+					printf("Uploaded file name: %s.\n\n", data);
 
-			// handle received data
-			data[recvBytes] = '\0';
-			printf("%s\n", data);
-			char *reply = split(data);
-		
-			// if string contain symbol return Error
-			if (reply == NULL)
-				reply = "Error";
+					int sumByte = 0;
+          char *ndFile;
+					fileptr = fopen(name, "wb");
+					ndFile = (char*) malloc(BUFF_SIZE * sizeof(char));
+					while(1) {
+						recvBytes = recv(conn_sockfd, ndFile, BUFF_SIZE, 0);
+						if(recvBytes == 0) {
+							printf("Error: Gui File that bai \n");
+						}
+						sumByte += recvBytes;
+						fwrite(ndFile, recvBytes, 1, fileptr);
+						free(ndFile);
+						ndFile = (char*) malloc(BUFF_SIZE * sizeof(char));
+						if(sumByte >= filelen) {
+							break;
+						}
+					}  // file content
+					if (recvBytes <= 0){
+						printf("\nConnection closed");
+						break;
+					}
+					
+					sendBytes = send(conn_sockfd, "Upload success \n", 30, 0);
+					if (sendBytes <= 0){
+						printf("\nConnection closed");
+						break;
+					}
 
-			//echo to client
-			sendBytes = send(conn_sockfd, reply, strlen(reply), 0);
-			if (sendBytes <= 0)
-			{
-				printf("\nConnection closed");
-				break;
-			}
+					fclose(fileptr);
+					free(ndFile);
+        }
+      }else{
+        // handle received data
+        data[recvBytes] = '\0';
+        printf("%s\n", data);
+        char *reply = split(data);
+      
+        // if string contain symbol return Error
+        if (reply == NULL)
+          reply = "Error";
+
+        //echo to client
+        sendBytes = send(conn_sockfd, reply, strlen(reply), 0);
+        if (sendBytes <= 0)
+        {
+          printf("\nConnection closed");
+          break;
+        }
+      }
 			//end conversation
 		} 
 		close(conn_sockfd);	
@@ -133,10 +177,13 @@ int main(int argc, char const *argv[])
 }
 
 int check_valid_file(char* file_name){
-	if (file_name[strlen(file_name)-1] == 't' && file_name[strlen(file_name)-2] == 'x' && 
-		file_name[strlen(file_name)-3] == 't' && file_name[strlen(file_name)-4] == '.'){
-		return 1;
-	}
+  int count = 0;
+  for(int i = 0; i < strlen(file_name); i++){
+    if(file_name[i] == '.')
+      count++;
+  }
+  if(count == 1)
+    return 1;
 	return 0;
 }
 
