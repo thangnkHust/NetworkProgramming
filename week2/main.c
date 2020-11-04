@@ -8,13 +8,16 @@ int main(int argc, char *argv[]){
 	}
 	else{
 		char *input = argv[1];
-		if(ip_valid(input)==1) {
+		int check = ip_valid(input);
+		printf("%d\n", check);
+		if(check == 1) {
 			get_info_ip_address(input);
 			return 0;
+		}else if(check == 2)
+			get_ip(input);
+		else{
+			printf("IP khong hop le\n");
 		}
-		get_ip(input);
-
 	}
 	return 0;
-
 }

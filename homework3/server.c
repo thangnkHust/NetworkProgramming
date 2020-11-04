@@ -72,8 +72,8 @@ char* get_ip(char * hostname)
 					strcat(reply, "NULL \n");
         }
         for(i = 1; addr_list[i] != NULL; i++) {
-            puts("");
 						strcat(reply, inet_ntoa(*addr_list[i]));
+						strcat(reply, "\n");
         }
     }
 	return reply;
@@ -99,7 +99,6 @@ char* get_info_ip_address(char *ipAddress) {
 				strcat(reply, "NULL\n");
 			}
 			else{
-				char *tmp;
 				for(int i = 0; host->h_aliases[i] != NULL; i++) {
 					strcat(reply, "\t");
 					strcat(reply, host->h_aliases[i]);
